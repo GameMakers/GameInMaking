@@ -1,0 +1,13 @@
+﻿<Properties>
+  <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" />
+  <MonoDevelop.Ide.Workbench ActiveDocument="Assets\Classes\Level Generation\LevelGenerator.cs">
+    <Files>
+      <File FileName="Assets\Classes\Level Generation\LevelGenerator.cs" Line="42" Column="67" />
+      <File FileName="Assets\Classes\Level Generation\Graph\Graph.cs" Line="6" Column="68" />
+    </Files>
+  </MonoDevelop.Ide.Workbench>
+  <MonoDevelop.Ide.DebuggingService.Breakpoints>
+    <BreakpointStore />
+  </MonoDevelop.Ide.DebuggingService.Breakpoints>
+  <MonoDevelop.Ide.DebuggingService.PinnedWatches />
+</Properties>
