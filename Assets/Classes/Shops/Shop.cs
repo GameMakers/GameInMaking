@@ -3,20 +3,20 @@ using System.Collections.Generic;
 
 public class Shop : MonoBehaviour {
 
-	protected string shopName;
+	protected string shop_name;
 	//text displayed when the player accesses the store
-	protected string greetingText;
+	protected string greeting_text;
 
 
 
 
 
-	public string toString(){
-		return shopName;
+	public string to_string(){
+		return shop_name;
 	}
 
-	public string getGreeting(){
-		return greetingText;
+	public string get_greeting(){
+		return greeting_text;
 	}
 
 

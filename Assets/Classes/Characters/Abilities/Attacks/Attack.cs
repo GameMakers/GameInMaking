@@ -3,117 +3,117 @@ using System.Collections.Generic;
 
 public class Attack : Ability {
 	
-	protected int baseDmg;
+	protected int base_damage;
 	protected int range;
 	protected int angle;
 	protected int width;
 	protected int height;
 	protected int speed;
-	protected int armorPenetration;
+	protected int armor_penetration;
 	//how much impact the attack has on environment destruction
-	protected int enironmentDestructability;
+	protected int enironment_destructability;
 	//from how far away the attack can be heard
-	protected int attackSoundDistance;
+	protected int attack_sound_distance;
 	//from how far away the impact can be heard
-	protected int impactSoundDistance;
+	protected int impact_sound_distance;
 
 	//status conditions which the attack can inflict and percentage chance of infliction
-	protected Dictionary<StatusCondition, int> conditions;
+	protected Dictionary<Status_condition, int> conditions;
 
 	//whether the attack can pass through walls
-	protected bool isRail = false;
+	protected bool is_rail = false;
 	//whether the attack will arc or travel in a straight line (if it is a projectile)
-	protected bool hasArc = false;
+	protected bool has_arc = false;
 	//whether the attack will detonate on impact
-	protected bool hasImpactDetonation = false;
+	protected bool has_impact_detonation = false;
 	//whether the attack will detonate after a period of time
-	protected bool hasTimedDetonation = false;
-	protected int detonationRadius = 0;
-	protected int detonationDamage = 0;
+	protected bool has_timed_detonation = false;
+	protected int detonation_radius = 0;
+	protected int detonation_damage = 0;
 
-	protected string animationType;
+	protected string animation_type;
 
 
 	
 
 
-	public int getDmg(){
-		return baseDmg;
+	public int get_damage(){
+		return base_damage;
 	}
 
-	public int getRange(){
+	public int get_range(){
 		return range;
 	}
 
-	public int getAngle(){
+	public int get_angle(){
 		return angle;
 	}
 
-	public int getWidth(){
+	public int get_width(){
 		return width;
 	}
 
-	public int getHeight(){
+	public int get_height(){
 		return height;
 	}
 
-	public int getSpeed(){
+	public int get_speed(){
 		return speed;
 	}
 
-	public int getArmorPenetration(){
-		return armorPenetration;
+	public int get_armor_penetration(){
+		return armor_penetration;
 	}
 
-	public int getEnironmentDestructability(){
-		return enironmentDestructability;
+	public int get_enironment_destructability(){
+		return enironment_destructability;
 	}
 
-	public int getAttackSoundDistance(){
-		return attackSoundDistance;
+	public int get_attack_sound_distance(){
+		return attack_sound_distance;
 	}
 
-	public int getImpactSoundDistance(){
-		return impactSoundDistance;
+	public int get_impact_sound_distance(){
+		return impact_sound_distance;
 	}
 
-	public Dictionary<StatusCondition, int> getConditions(){
+	public Dictionary<Status_condition, int> get_conditions(){
 		return conditions;
 	}
 
-	public bool attackIsRail(){
-		return isRail;
+	public bool attack_is_rail(){
+		return is_rail;
 	}
 
-	public bool attackHasArc(){
-		return hasArc;
+	public bool attack_has_arc(){
+		return has_arc;
 	}
 
-	public bool attackHasImpactDetonation(){
-		return hasImpactDetonation;
+	public bool attack_has_impact_detonation(){
+		return has_impact_detonation;
 	}
 
-	public bool attackHasTimedDetonation(){
-		return hasTimedDetonation;
+	public bool attack_has_timed_detonation(){
+		return has_timed_detonation;
 	}
 
-	public int getDetonationRadius(){
-		return detonationRadius;
+	public int get_detonation_radius(){
+		return detonation_radius;
 	}
 
-	public int getDetonationDamage(){
-		return detonationDamage;
+	public int get_detonation_damage(){
+		return detonation_damage;
 	}
 
-	public string getAnimationType(){
-		return animationType;
+	public string get_animation_type(){
+		return animation_type;
 	}
 
 
-	public List<StatusCondition> getConditionsInflicted(){
-		List<StatusCondition> inflictedConditions = new List<StatusCondition>();
+	public List<Status_condition> get_conditions_inflicted(){
+		List<Status_condition> inflicted_conditions = new List<Status_condition>();
 		//DETERMINE WHICH CONDITIONS WERE INFLICTED AND RETURN A LIST OF THEM
-		return inflictedConditions;
+		return inflicted_conditions;
 	}
 
 }

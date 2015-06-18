@@ -1,376 +1,446 @@
 ﻿using UnityEngine;
 using System;
+using System.Linq;
 using System.Collections.Generic;
 
 public class LevelGenerator : MonoBehaviour {
 
 	public Transform player;
 	public Transform prefab;
-	public Vector3 startPos;
-	private Vector3 nextPos;
+	public Vector3 start_pos;
+	private Vector3 next_pos;
 
-	private int xRecycleCutoff=20, yRecycleCutoff=10;
-	private readonly int totalInstanciatedPlatforms = 20;
+	private readonly int TOTAL_PLATFORMS = 1000;
+	private readonly int X_RECYLE_CUTOFF = 20, Y_RECYCLE_CUTOFF = 10;
+	private readonly int TOTAL_INSTANCIATED_PLATFORMS = 100;
+	private readonly float VERTICAL_BUFFER = 1;
+
+	//REFERENCE THE PLAYER MOVEMENT SCRIPT FOR THESE VALUES
 	//information about the player's mobility used to determine if one platform can be reached from another
-	private readonly float platformWidthGap = 10;
-	private readonly float platformUpwardsGap = 3;
-	private readonly float platformDownwardsGap = 15;
 	//private readonly float playerSpeed = 10;
 	//private readonly float playerJump = 5;
+	private int platform_horizontal_gap = 40;
+	private int platform_upwards_gap = 40;
+	private int platform_downwards_gap = 70;
+	
 	
 	//stores the minimally necessary information on all platforms in the entire level
-	private List<Platform> allPlatforms;
+	private List<Platform> all_platforms;
 	//each list stores the farthest point of all platforms for a particular extremity in sorted order - this is used to identify when they should become active
-	private List<PlatformReference> rightExtremities, leftExtremities, upperExtremities, lowerExtremities;
+	private SortedList<float,int> right_extremities, left_extremities, upper_extremities, lower_extremities;
 	//used to keep track of index locations in the extremity lists
-	private int rightExIndex, leftExIndex, upperExIndex, lowerExIndex;
+	private int right_extremity_index, left_extremity_index, upper_extremity_index, lower_extremity_index;
 	//used to keep track of the farthest active platform with respect to each border
-	private float minXPosition, maxXPosition, minYPosition, maxYPosition;
+	private float min_x_pos, max_x_pos, min_y_pos, max_y_pos;
+	private int min_x_index, max_x_index, min_y_index, max_y_index;
 	//used to keep track of the nearest inactive platform in each direction
-	private float nextLeftPos, nextRightPos, nextUpperPos, nextLowerPos;
+	private float next_left_pos, next_right_pos, next_upper_pos, next_lower_pos;
 	//used to keep track of replacement platforms when the borders are pulled by player movement
-	private float nextLeftPosRep, nextRightPosRep, nextUpperPosRep, nextLowerPosRep;
+	private float next_left_pos_rep, next_right_pos_rep, next_upper_pos_rep, next_lower_pos_rep;
+	//used to keep track of the cutoffs for the player's current position
+	float right_extremity_cutoff, left_extremity_cutoff, upper_extremity_cutoff, lower_extremity_cutoff;
 	
 	//a directed graph with platforms as nodes and edges to represent reachable platforms
-	private Graph platformGraph;
+	private Graph platform_graph;
 	
-	private Queue<Transform> inactivePlatforms;
-	private List<Transform> activePlatforms;
+	private Queue<Transform> inactive_platforms;
+	private List<Transform> active_platforms;
 	
-	//ADDRESS CASES WHERE MULTIPLE PLATFORMS HAVE EXTREMITIES WHICH SHARE THE SAME POSITION
+	
+	//FIX GENERATION BUGS
+	//VERIFY THAT GRAPH CAN BE REMOVED
+	
+	//ADD CODE TO MARK THE START AND END PLATFORMS
 	//IMPROVE LEVEL GENERATION RULES
-	//IMPROVE GRAPH CONSTRUCTION AND CHECKING WITH NEW MOBILITY RULES
-	//ADD CODE TO CORRECT THE GRAPH WHEN IT IS NOT VALID
-	//ADD CODE TO MARK THE START AND END NODES OF THE GRAPH
-	
 	//VERIFY CASES WHEN LIST ENDS ARE REACHED
 	//VERIFY THE CORECTNESS FOR ALL EVENTS
-	//VERIFY GRAPH CONSTRUCTION CORRECTNESS
 	
 	
 	void Start(){
-		activePlatforms = new List<Transform>();
-		inactivePlatforms = new Queue<Transform>();
-		allPlatforms = new List<Platform>();
-		rightExtremities = new List<PlatformReference>();
-		leftExtremities = new List<PlatformReference>();
-		upperExtremities = new List<PlatformReference>();
-		lowerExtremities = new List<PlatformReference>();
-		platformGraph = new Graph();
+		active_platforms = new List<Transform>();
+		inactive_platforms = new Queue<Transform>();
+		all_platforms = new List<Platform>();
+		//TEST THE COMPARATOR
+		right_extremities = new SortedList<float,int>(new Duplicate_key_comparer<float>());
+		left_extremities = new SortedList<float,int>(new Duplicate_key_comparer<float>());
+		upper_extremities = new SortedList<float,int>(new Duplicate_key_comparer<float>());
+		lower_extremities = new SortedList<float,int>(new Duplicate_key_comparer<float>());
+		platform_graph = new Graph();
 
 		//instantiate up to the number of allowed platforms
-		for (int a=0; a<totalInstanciatedPlatforms; a++) {
+		for (int a=0; a<TOTAL_INSTANCIATED_PLATFORMS; a++) {
 			Transform platform = (Transform)Instantiate(prefab);
-			inactivePlatforms.Enqueue(platform);
+			inactive_platforms.Enqueue(platform);
 		}
 
-		//REPLACE WITH IMPROVED LEVEL GENERATION
-		//fill data structure with all platforms for the level
-		nextPos = startPos;
-		nextPos.x -= 4.1f;
-		Vector3 startScale = new Vector3(4, 0.36f, 1);
+		//place the start platform
+		Vector3 start_scale = new Vector3(4, 0.36f, 1);
+		Platform start_platform = new Platform(start_pos, start_scale);
+		all_platforms.Add(start_platform);
+		right_extremities.Add(start_platform.get_right_extremity(), 0);
+		left_extremities.Add(start_platform.get_left_extremity(), 0);
+		upper_extremities.Add(start_platform.get_upper_extremity(), 0);
+		lower_extremities.Add(start_platform.get_lower_extremity(), 0);
+
+		System.Random rnd = new System.Random();
+		//for each remaining platform to be created
+		for (int a=1; a<TOTAL_PLATFORMS; ++a){		
+			bool is_overlapping = true;
 		
-		for (int a=0; a<50; a++){
-			nextPos.x += 4.1f;
-			Platform tempPlat = new Platform(nextPos, startScale);
+			//randomly select an existing platform from which the new platform should be reachable
+			int index = rnd.Next(all_platforms.Count);
+			int placement_attempts = 0;
 			
-			allPlatforms.Add(tempPlat);
-			platformGraph.addVertex(new Vertex());
+			//try up to 3 times to create and place the new platform
+			Platform platform = new Platform();
+			while (is_overlapping && placement_attempts < 3){
+				++placement_attempts;
 			
-			//store information about each extremity of the platform
-			rightExtremities.Add(new PlatformReference(tempPlat.getPosition().x + (tempPlat.getScale().x/2), a));
-			leftExtremities.Add(new PlatformReference(tempPlat.getPosition().x - (tempPlat.getScale().x/2), a));
-			upperExtremities.Add(new PlatformReference(tempPlat.getPosition().y + (tempPlat.getScale().y/2), a));
-			lowerExtremities.Add(new PlatformReference(tempPlat.getPosition().y - (tempPlat.getScale().y/2), a));
+				//select a random width for the new platform
+				int platform_width = rnd.Next(2, 10);
+				Vector3 platform_scale = new Vector3(platform_width, 0.36f, 1);
+
+				//select a random location for the platform within a reachable proximity of the selected platform
+				int platform_x = rnd.Next((int)(all_platforms[index].get_left_extremity() - platform_horizontal_gap), (int)(all_platforms[index].get_right_extremity() + platform_horizontal_gap));
+				int platform_y = rnd.Next((int)(all_platforms[index].get_lower_extremity() - platform_downwards_gap), (int)(all_platforms[index].get_upper_extremity() + platform_upwards_gap));
+				Vector3 platform_pos = new Vector3(platform_x, platform_y, 1);
+				
+				platform = new Platform(platform_pos, platform_scale);
+				float left_extremity = platform.get_left_extremity();
+				float right_extremity = platform.get_right_extremity();
+				float upper_buffer = platform.get_upper_extremity() + VERTICAL_BUFFER;
+				float lower_buffer = platform.get_lower_extremity() - VERTICAL_BUFFER;
+				
+				//determine the index of the first platform fully to the right of hte new platform
+				int stop_index = 0;
+				foreach (KeyValuePair<float, int> extremity in left_extremities){
+					if (extremity.Key >= right_extremity){
+						stop_index = extremity.Value;
+						break;
+					}
+				}
+
+				bool is_potential_overlap = false;
+				is_overlapping = false;
+				
+				//walk through the existing platforms in order of their right extremities
+				foreach (KeyValuePair<float, int> extremity in right_extremities){
+					//start checking for overlapping platforms once the first platform with its right extremity to the left of the left extremity of the new platform is reached
+					if (extremity.Key >= left_extremity)
+						is_potential_overlap = true;
+				
+					//if the stop index has been reached, do not check any more platforms
+					if (extremity.Value == stop_index)
+						break;
+						
+					//if the current platform overlaps on the x-axis with the new platform
+					if (is_potential_overlap){
+						//if the current platform falls within the vertical buffer of the new platform, an overlap has occured
+						if (!(all_platforms[extremity.Value].get_lower_extremity() > upper_buffer  || all_platforms[extremity.Value].get_upper_extremity() < lower_buffer)){
+							is_overlapping = true;
+							break;
+						}
+					}
+				}			
+			}
 			
-			tempPlat.setPosition(nextPos);
+			//MARK FIRST PLATFORM AS FULL AND EXLCUDE FROM FUTURE ADDITIONS?
+			//if the new platform is still overlapping, do not place it - decrement the iteration number to try again from a new platform to reach from
+			if (is_overlapping)
+				--a;
+			//otherwise, place the platform
+			else{
+				all_platforms.Add(platform);
+				right_extremities.Add(platform.get_right_extremity(), a);
+				left_extremities.Add(platform.get_left_extremity(), a);
+				upper_extremities.Add(platform.get_upper_extremity(), a);
+				lower_extremities.Add(platform.get_lower_extremity(), a);
+			}
 		}
 
-		//sort the lists of references
-		rightExtremities.Sort();
-		leftExtremities.Sort();
-		upperExtremities.Sort();
-		lowerExtremities.Sort();
-		
-		
-		//construct a directed graph with edges between plaforms that are sufficiently reachable from eachother
-		buildGraphEdges();
+		//construct a directed graph with edges between plaforms that are sufficiently reachable from each other
+		//build_graph_edges();
 		
 		//check if the graph represents a level which can be traversed based on the mobility of the player
 		//UPDATE THIS TO CORRECT THE GRAPH WHEN IT IS NOT VALID
 		//ADD THE CORRECT INDICATION OF THE START AND END NODES
-		if (!platformGraph.isValid(0, 1))
-			print ("LEVEL CANNOT BE COMPLETED BY CURRENT PLAYER");
-		
-		
-		float rightExCutoff = player.localPosition.x - xRecycleCutoff;
-		float leftExCutoff = player.localPosition.x + xRecycleCutoff;
-		float upperExCutoff = player.localPosition.y - yRecycleCutoff;
-		float lowerExCutoff = player.localPosition.y + yRecycleCutoff;
-		float tempPos, tempScale;
+		//if (!platform_graph.isValid(0, 1))
+			//print ("LEVEL CANNOT BE COMPLETED BY CURRENT PLAYER");
+				
+		right_extremity_cutoff = player.localPosition.x - X_RECYLE_CUTOFF;
+		left_extremity_cutoff = player.localPosition.x + X_RECYLE_CUTOFF;
+		upper_extremity_cutoff = player.localPosition.y - Y_RECYCLE_CUTOFF;
+		lower_extremity_cutoff = player.localPosition.y + Y_RECYCLE_CUTOFF;
+		float temp_pos, temp_scale;
 		
 		//find the smallest active right extremity
-		for (int a=0; a<allPlatforms.Count; a++){
-		
+		float prev_extremity = float.MinValue;
+		int stage = 1;
+		for (int a = 0; a < all_platforms.Count; ++a){
 			//when the first right extremity within the active x range is found
-			if (rightExtremities[a].getExtremity() > rightExCutoff){
-			
+			if (stage == 1 && right_extremities.ElementAt(a).Key > right_extremity_cutoff){
+				stage = 2;
+				right_extremities.ElementAt(a);
 				//mark the position of the next right extremity that would appear when pushing the borders left
-				if (a == 0)
-					nextLeftPos = float.MinValue;
-				else
-					nextLeftPos = rightExtremities[a-1].getExtremity();
-					
+				next_left_pos = prev_extremity;			
 				//mark the extremity index
-				rightExIndex = a;
-					
+				//right_extremity_index = right_extremities.ElementAt(a).Value;
+				right_extremity_index = a;
+				
+				//SHOULD THIS SAY DISAPPEAR?
 				//mark the position of the next right extremity that would appear when pulling the borders to the right
-				nextLeftPosRep = rightExtremities[a].getExtremity();
-				
-				//continue checking platforms until the first which is also within the active y range is found
-				for (int b=a+1; b<allPlatforms.Count; b++){
-					tempPos = allPlatforms[rightExtremities[b].getIndex()].getPosition().y;
-					tempScale = allPlatforms[rightExtremities[b].getIndex()].getScale().y;
-					
-					//if the platform is within the allowable y range
-					if (((tempPos + (tempScale/2)) > upperExCutoff) && ((tempPos - (tempScale/2)) < lowerExCutoff)){
-						//mark the extremity position
-						minXPosition = rightExtremities[b].getExtremity();
-						
-						break;
-					}
-				}
-				
-				break;
+				next_left_pos_rep = right_extremities.ElementAt(a).Key;
 			}
-		}
-		
-		//find the largest active left extremity
-		for (int a=allPlatforms.Count-1; a>=0; a--){
-			if (leftExtremities[a].getExtremity() < leftExCutoff){
-				if (a == (leftExtremities.Count-1))
-					nextRightPos = float.MaxValue;
-				else
-					nextRightPos = leftExtremities[a+1].getExtremity();
-					
-				leftExIndex = a;
-				nextRightPosRep = leftExtremities[a].getExtremity();
+			//continue checking platforms until the first which is also within the active y range is found
+			else if (stage == 2){
+				temp_pos = all_platforms[right_extremities.ElementAt(a).Value].get_position().y;
+				temp_scale = all_platforms[right_extremities.ElementAt(a).Value].getScale().y;
+				
+				//if the platform is within the allowable y range
+				if (((temp_pos + (temp_scale/2)) > upper_extremity_cutoff) && ((temp_pos - (temp_scale/2)) < lower_extremity_cutoff)){
+					//mark the extremity position and index
+					min_x_pos = right_extremities.ElementAt(a).Key;
+					min_x_index = right_extremities.ElementAt(a).Value;			
+					break;
+				}
+			}
 			
-				for (int b=a-1; b>=0; b--){
-					tempPos = allPlatforms[leftExtremities[b].getIndex()].getPosition().y;
-					tempScale = allPlatforms[leftExtremities[b].getIndex()].getScale().y;
-					if (((tempPos + (tempScale/2)) > upperExCutoff) && ((tempPos - (tempScale/2)) < lowerExCutoff)){
-						maxXPosition = leftExtremities[b].getExtremity();
-						break;
-					}
-				}
-				break;
+			prev_extremity = right_extremities.ElementAt(a).Key;
+		}
+
+		//find the largest active left extremity
+		prev_extremity = float.MaxValue;
+		stage = 1;
+		for (int a = all_platforms.Count-1; a >= 0; --a){
+			if (stage == 1 && left_extremities.ElementAt(a).Key < left_extremity_cutoff){
+				stage = 2;
+				next_right_pos = prev_extremity;
+				//left_extremity_index = left_extremities.ElementAt(0).Value;
+				left_extremity_index = a;
+				next_right_pos_rep = left_extremities.ElementAt(a).Key;
 			}
+			else if (stage == 2){
+				temp_pos = all_platforms[left_extremities.ElementAt(a).Value].get_position().y;
+				temp_scale = all_platforms[left_extremities.ElementAt(a).Value].getScale().y;
+				
+				if (((temp_pos + (temp_scale/2)) > upper_extremity_cutoff) && ((temp_pos - (temp_scale/2)) < lower_extremity_cutoff)){
+					max_x_pos = left_extremities.ElementAt(a).Key;
+					max_x_index = left_extremities.ElementAt(a).Value;
+					break;
+				}
+			}
+			
+			prev_extremity = left_extremities.ElementAt(a).Key;
 		}
 		
 		//find the smallest active upper extremity
-		for (int a=0; a<allPlatforms.Count; a++){
-			if (upperExtremities[a].getExtremity() > upperExCutoff){
-				if (a == 0)
-					nextLowerPos = float.MinValue;
-				else
-					nextLowerPos = upperExtremities[a-1].getExtremity();
-					
-				upperExIndex = a;
-				nextLowerPosRep = upperExtremities[a].getExtremity();
-				
-				for (int b=a+1; b<allPlatforms.Count; b++){
-					tempPos = allPlatforms[upperExtremities[b].getIndex()].getPosition().x;
-					tempScale = allPlatforms[upperExtremities[b].getIndex()].getScale().x;
-					if (((tempPos + (tempScale/2)) > rightExCutoff) && ((tempPos - (tempScale/2)) < leftExCutoff)){
-						minYPosition = upperExtremities[b].getExtremity();
-						break;
-					}
-				}
-				break;
+		prev_extremity = float.MinValue;
+		stage = 1;
+		for (int a = 0; a < all_platforms.Count; ++a){
+			if (stage == 1 && upper_extremities.ElementAt(a).Key > upper_extremity_cutoff){
+				stage = 2;
+				next_lower_pos = prev_extremity;
+				//upper_extremity_index = upper_extremities.ElementAt(0).Value;
+				upper_extremity_index = a;
+				next_lower_pos_rep = upper_extremities.ElementAt(a).Key;
 			}
+			else if (stage == 2){
+				temp_pos = all_platforms[upper_extremities.ElementAt(a).Value].get_position().x;
+				temp_scale = all_platforms[upper_extremities.ElementAt(a).Value].getScale().x;
+				
+				if (((temp_pos + (temp_scale/2)) > right_extremity_cutoff) && ((temp_pos - (temp_scale/2)) < left_extremity_cutoff)){
+					min_y_pos = upper_extremities.ElementAt(a).Key;
+					min_y_index = upper_extremities.ElementAt(a).Value;
+					break;
+				}
+			}
+			
+			prev_extremity = upper_extremities.ElementAt(a).Key;
 		}
 		
 		//find the largest active lower extremity
-		for (int a=allPlatforms.Count-1; a>=0; a--){
-			if (lowerExtremities[a].getExtremity() < lowerExCutoff){
-				if (a == (lowerExtremities.Count-1))
-					nextUpperPos = float.MaxValue;
-				else
-					nextUpperPos = lowerExtremities[a+1].getExtremity();
-					
-				lowerExIndex = a;
-				nextUpperPosRep = lowerExtremities[a].getExtremity();
-					
-				for (int b=a-1; b>=0; b--){	
-					tempPos = allPlatforms[lowerExtremities[b].getIndex()].getPosition().x;
-					tempScale = allPlatforms[lowerExtremities[b].getIndex()].getScale().x;
-					if (((tempPos + (tempScale/2)) > rightExCutoff) && ((tempPos - (tempScale/2)) < leftExCutoff)){
-						maxYPosition = lowerExtremities[b].getExtremity();
-						break;
-					}
-				}
-				break;
+		prev_extremity = float.MaxValue;
+		stage = 1;
+		for (int a = all_platforms.Count-1; a >= 0; --a){
+		//if (stage==1)
+				//print (lower_extremities.ElementAt(0).Key);
+			if (stage == 1 && lower_extremities.ElementAt(a).Key < lower_extremity_cutoff){
+				stage = 2;
+				next_upper_pos = prev_extremity;
+				//lower_extremity_index = lower_extremities.ElementAt(0).Value;
+				lower_extremity_index = a;
+				next_upper_pos_rep = lower_extremities.ElementAt(a).Key;
 			}
+			else if (stage == 2){
+				temp_pos = all_platforms[lower_extremities.ElementAt(a).Value].get_position().x;
+				temp_scale = all_platforms[lower_extremities.ElementAt(a).Value].getScale().x;
+				
+				if (((temp_pos + (temp_scale/2)) > right_extremity_cutoff) && ((temp_pos - (temp_scale/2)) < left_extremity_cutoff)){
+					max_y_pos = lower_extremities.ElementAt(a).Key;
+					max_y_index = lower_extremities.ElementAt(a).Value;
+					break;
+				}
+			}
+			
+			prev_extremity = lower_extremities.ElementAt(a).Key;
 		}
-		
-		
-		//activate the platform with the farthest allowable right extremity
-		activate(rightExtremities[rightExIndex].getIndex());
 
 		//check all platforms in order of their right extremity location for allowable activation until the farthest allowable left extremity is reached
-		int xIndex = rightExIndex+1;
-		while (rightExtremities[xIndex].getIndex() != leftExtremities[leftExIndex].getIndex()){
-			tempPos = allPlatforms[rightExtremities[xIndex].getIndex()].getPosition().y;
-			tempScale = allPlatforms[rightExtremities[xIndex].getIndex()].getScale().y;
-			//if the platform is within the allowable y range then activate it
-			if (((tempPos + (tempScale/2)) > upperExCutoff) && ((tempPos - (tempScale/2)) < lowerExCutoff))
-				activate(rightExtremities[xIndex].getIndex());
-			xIndex++;
+		int x_index = right_extremity_index;
+		while (right_extremities.ElementAt(x_index).Value != left_extremities.ElementAt(left_extremity_index).Value){
+			activate_if_in_y_range(right_extremities.ElementAt(x_index).Value);
+			x_index++;
 		}
 		
-		//activate the platform with the farthest allowable left extremity
-		activate(leftExtremities[leftExIndex].getIndex());
+		//check the platform with the farthest allowable left extremity for activation
+		activate_if_in_y_range(left_extremities.ElementAt(left_extremity_index).Value);
+	}
+	
+	private bool activate_if_in_y_range(int index){
+		float temp_pos = all_platforms[index].get_position().y;
+		float temp_scale = all_platforms[index].getScale().y;
+		//if the platform is within the allowable y range then activate it
+		if (((temp_pos + (temp_scale/2)) > upper_extremity_cutoff) && ((temp_pos - (temp_scale/2)) < lower_extremity_cutoff)){
+			activate(index);
+			return true;
+		}
+		
+		return false;
+	}
+	
+	private bool activate_if_in_x_range(int index){
+		float temp_pos = all_platforms[index].get_position().x;
+		float temp_scale = all_platforms[index].getScale().x;
+		//if the platform is within the allowable y range then activate it
+		if (((temp_pos + (temp_scale/2)) > right_extremity_cutoff) && ((temp_pos - (temp_scale/2)) < left_extremity_cutoff)){
+			activate(index);
+			return true;
+		}
+		
+		return false;
 	}
 	
 	//take an inactive platform and activate it with the characteristics of the platform at the specified index
 	private void activate(int index){
-		prefab = inactivePlatforms.Dequeue();
-		prefab.localPosition = allPlatforms[index].getPosition();
-		prefab.localScale = allPlatforms[index].getScale();
-		activePlatforms.Add(prefab);
+		prefab = inactive_platforms.Dequeue();
+		prefab.localPosition = all_platforms[index].get_position();
+		prefab.localScale = all_platforms[index].getScale();
+		active_platforms.Add(prefab);
 	}
 
 
 	void Update(){
-		float rightExCutoff = player.localPosition.x - xRecycleCutoff;
-		float leftExCutoff = player.localPosition.x + xRecycleCutoff;
-		float upperExCutoff = player.localPosition.y - yRecycleCutoff;
-		float lowerExCutoff = player.localPosition.y + yRecycleCutoff;
-		float tempPosition;
+		right_extremity_cutoff = player.localPosition.x - X_RECYLE_CUTOFF;
+		left_extremity_cutoff = player.localPosition.x + X_RECYLE_CUTOFF;
+		upper_extremity_cutoff = player.localPosition.y - Y_RECYCLE_CUTOFF;
+		lower_extremity_cutoff = player.localPosition.y + Y_RECYCLE_CUTOFF;
+		float temp_position;
 		int index;
 
 		//if the next platform off the left border is reached via border push
-		if (nextLeftPos >= rightExCutoff){
-			rightExIndex--;
-			index = rightExtremities[rightExIndex].getIndex();
-			//check if the upper extremity of the next platform is in range
-			tempPosition = allPlatforms[index].getPosition().y + (allPlatforms[index].getScale().y /2);
-			if (tempPosition >= (player.localPosition.y - yRecycleCutoff)){
-				//check if the lower extremity of the next platform is in range
-				tempPosition -= allPlatforms[index].getScale().y;
-				if (tempPosition <= (player.localPosition.y + yRecycleCutoff)){
-					//activate the platform
-					activate (index);
-					//update the global extremity
-					minXPosition = rightExtremities[rightExIndex].getExtremity();
-				}
-			}
-			//update the next platform positions
-			nextLeftPosRep = nextLeftPos;
+		if (next_left_pos >= right_extremity_cutoff){
+			right_extremity_index--;
 			
-			if (rightExIndex == 0)
-				nextLeftPos = float.MinValue;
+			//activate the platform if it is within the valid y-range and update the minimum active x position if it is activated
+			if (activate_if_in_y_range(right_extremities.ElementAt(right_extremity_index).Value)){
+				min_x_pos = right_extremities.ElementAt(right_extremity_index).Key;
+				min_x_index = right_extremities.ElementAt(right_extremity_index).Value;
+			}
+			
+			//update the next platform positions
+			next_left_pos_rep = next_left_pos;			
+			if (right_extremity_index == 0)
+				next_left_pos = float.MinValue;
 			else
-				nextLeftPos = rightExtremities[(rightExIndex-1)].getExtremity();
+				next_left_pos = right_extremities.ElementAt(right_extremity_index-1).Key;
 		}
 		
 		//if the next platform off the right border is reached via border push
-		if (nextRightPos <= leftExCutoff){
-			leftExIndex++;
-			index = leftExtremities[leftExIndex].getIndex();
-			tempPosition = allPlatforms[index].getPosition().y + (allPlatforms[index].getScale().y /2);
-			if (tempPosition >= (player.localPosition.y - yRecycleCutoff)){
-				tempPosition -= allPlatforms[index].getScale().y;
-				if (tempPosition <= (player.localPosition.y + yRecycleCutoff)){
-					activate (index);
-					maxXPosition = leftExtremities[leftExIndex].getExtremity();
-				}
+		if (next_right_pos <= left_extremity_cutoff){
+			left_extremity_index++;
+			
+			if (activate_if_in_y_range(left_extremities.ElementAt(left_extremity_index).Value)){
+				max_x_pos = left_extremities.ElementAt(left_extremity_index).Key;
+				max_x_index = left_extremities.ElementAt(left_extremity_index).Value;
 			}
-			nextRightPosRep = nextRightPos;
-			if (leftExIndex == (leftExtremities.Count-1))
-				nextRightPos = float.MaxValue;
+			
+			next_right_pos_rep = next_right_pos;
+			if (left_extremity_index == (left_extremities.Count-1))
+				next_right_pos = float.MaxValue;
 			else
-				nextRightPos = leftExtremities[(leftExIndex+1)].getExtremity();
+				next_right_pos = left_extremities.ElementAt(left_extremity_index+1).Key;
 		}
-		
+
 		//if the next platform off the upper border is reached via border push
-		if (nextUpperPos <= lowerExCutoff){
-			lowerExIndex++;
-			index = lowerExtremities[lowerExIndex].getIndex();
-			tempPosition = allPlatforms[index].getPosition().x + (allPlatforms[index].getScale().x /2);
-			if (tempPosition >= (player.localPosition.x - xRecycleCutoff)){
-				tempPosition -= allPlatforms[index].getScale().x;
-				if (tempPosition <= (player.localPosition.x + xRecycleCutoff)){
-					activate (index);
-					maxYPosition = lowerExtremities[lowerExIndex].getExtremity();
-				}
+		if (next_upper_pos <= lower_extremity_cutoff){
+			lower_extremity_index++;
+			if (activate_if_in_x_range(lower_extremities.ElementAt(lower_extremity_index).Value)){
+				max_y_pos = lower_extremities.ElementAt(lower_extremity_index).Key;
+				max_y_index = lower_extremities.ElementAt(lower_extremity_index).Value;
 			}
-			nextUpperPosRep = nextUpperPos;
-			if (lowerExIndex == (leftExtremities.Count-1))
-				nextUpperPos = float.MaxValue;
+			
+			next_upper_pos_rep = next_upper_pos;
+			if (lower_extremity_index == (lower_extremities.Count-1))
+				next_upper_pos = float.MaxValue;
 			else
-				nextUpperPos = lowerExtremities[(lowerExIndex+1)].getExtremity();
+				next_upper_pos = lower_extremities.ElementAt(lower_extremity_index+1).Key;
 		}
-		
+
 		//if the next platform off the bottom border is reached via border push
-		if (nextLowerPos >= upperExCutoff){
-			upperExIndex++;
-			index = upperExtremities[upperExIndex].getIndex();
-			tempPosition = allPlatforms[index].getPosition().x + (allPlatforms[index].getScale().x /2);
-			if (tempPosition >= (player.localPosition.x - xRecycleCutoff)){
-				tempPosition -= allPlatforms[index].getScale().x;
-				if (tempPosition <= (player.localPosition.x + xRecycleCutoff)){
-					activate (index);
-					minYPosition = upperExtremities[upperExIndex].getExtremity();
-				}
+		if (next_lower_pos >= upper_extremity_cutoff){
+			upper_extremity_index--;
+			
+			if (activate_if_in_x_range(upper_extremities.ElementAt(upper_extremity_index).Value)){
+				min_y_pos = upper_extremities.ElementAt(upper_extremity_index).Key;
+				min_y_index = upper_extremities.ElementAt(upper_extremity_index).Value;
 			}
-			nextLowerPosRep = nextLowerPos;
-			if (upperExIndex == 0)
-				nextLowerPos = float.MinValue;
+			
+			next_lower_pos_rep = next_lower_pos;
+			if (upper_extremity_index == 0)
+				next_lower_pos = float.MinValue;
 			else
-				nextLowerPos = upperExtremities[(upperExIndex-1)].getExtremity();
+				next_lower_pos = upper_extremities.ElementAt(upper_extremity_index-1).Key;
 		}
 		
 		
 		//if the left borders are pulled such that the next platform off the left border must be updated
-		if (nextLeftPosRep <= rightExCutoff){
-			nextLeftPos = nextLeftPosRep;
-			rightExIndex++;
-			if (rightExIndex == (allPlatforms.Count-1))
-				nextLeftPosRep = float.MaxValue;
+		if (next_left_pos_rep <= right_extremity_cutoff){
+			next_left_pos = next_left_pos_rep;
+			right_extremity_index++;
+			if (right_extremity_index == (all_platforms.Count-1))
+				next_left_pos_rep = float.MaxValue;
 			else
-				nextLeftPosRep = rightExtremities[rightExIndex].getExtremity();
+				next_left_pos_rep = right_extremities.ElementAt(right_extremity_index).Key;
 		}
 		
 		//if the borders are pulled such that the next platform off the right border must be updated
-		if (nextRightPosRep >= leftExCutoff){
-			nextRightPos = nextRightPosRep;
-			leftExIndex--;
-			if (upperExIndex == 0)
-				nextRightPosRep = float.MinValue;
+		if (next_right_pos_rep >= left_extremity_cutoff){
+			next_right_pos = next_right_pos_rep;
+			left_extremity_index--;
+			if (upper_extremity_index == 0)
+				next_right_pos_rep = float.MinValue;
 			else
-				nextRightPosRep = leftExtremities[leftExIndex].getExtremity();
+				next_right_pos_rep = left_extremities.ElementAt(left_extremity_index).Key;
 		}
 		
 		//if the borders ares pulled such that the next platform off the upper border must be updated
-		if (nextUpperPosRep >= lowerExCutoff){
-			nextUpperPos = nextUpperPosRep;
-			lowerExIndex--;
-			if (lowerExIndex == 0)
-				nextUpperPosRep = float.MinValue;
+		if (next_upper_pos_rep >= lower_extremity_cutoff){
+			next_upper_pos = next_upper_pos_rep;
+			lower_extremity_index--;
+			if (lower_extremity_index == 0)
+				next_upper_pos_rep = float.MinValue;
 			else
-				nextUpperPosRep = lowerExtremities[lowerExIndex].getExtremity();
+				next_upper_pos_rep = lower_extremities.ElementAt(lower_extremity_index).Key;
 		}
 		
 		//if the borders are pulled such that the next platform off the lower border must be updated
-		if (nextLowerPosRep <= upperExCutoff){
-			nextLowerPos = nextLowerPosRep;
-			upperExIndex++;
-			if (upperExIndex == (allPlatforms.Count-1))
-				nextLowerPosRep = float.MaxValue;
+		if (next_lower_pos_rep <= upper_extremity_cutoff){
+			next_lower_pos = next_lower_pos_rep;
+			upper_extremity_index++;
+			if (upper_extremity_index == (all_platforms.Count-1))
+				next_lower_pos_rep = float.MaxValue;
 			else
-				nextLowerPosRep = upperExtremities[upperExIndex].getExtremity();
+				next_lower_pos_rep = upper_extremities.ElementAt(upper_extremity_index).Key;
 		}
 
 
@@ -378,219 +448,219 @@ public class LevelGenerator : MonoBehaviour {
 		index = int.MaxValue;
 
 		//check if a platform should be deactivated off the left border
-		if (minXPosition < rightExCutoff){
-			float newPosition = float.MaxValue;
-			float newYMin = float.MaxValue, newYMax = float.MinValue;
+		if (min_x_pos < right_extremity_cutoff){
+			float new_pos = float.MaxValue;
+			float new_y_min = float.MaxValue, newYMax = float.MinValue;
 			
 			//loop through all active platforms
-			for (int a=0; a<activePlatforms.Count; a++){
+			for (int a=0; a<active_platforms.Count; a++){
 				//store the position of the right extremity current platform
-				tempPosition = (activePlatforms[a].localPosition.x + (activePlatforms[a].localScale.x / 2));
+				temp_position = (active_platforms[a].localPosition.x + (active_platforms[a].localScale.x / 2));
 				//if the platform to deactivate has been found then store its index
-				if (tempPosition == minXPosition)
+				if (temp_position == min_x_pos)
 					index = a;
 				//update the new plaform farthest to the left border
-				else if (tempPosition < newPosition)
-					newPosition = tempPosition;
+				else if (temp_position < new_pos)
+					new_pos = temp_position;
 					
 				//store the position of the upper extremity current platform
-				tempPosition = (activePlatforms[a].localPosition.y + (activePlatforms[a].localScale.y / 2));
-				if (tempPosition > minYPosition && tempPosition < newYMin)
-					newYMin = tempPosition;
+				temp_position = (active_platforms[a].localPosition.y + (active_platforms[a].localScale.y / 2));
+				if (temp_position > min_y_pos && temp_position < new_y_min)
+					new_y_min = temp_position;
 				//store the position of the lower extremity current platform
-				tempPosition -= activePlatforms[a].localScale.y;
-				if (tempPosition < maxYPosition && tempPosition > newYMax)
-					newYMax = tempPosition;
+				temp_position -= active_platforms[a].localScale.y;
+				if (temp_position < max_y_pos && temp_position > newYMax)
+					newYMax = temp_position;
 			}
 			
 			//update the global min active
-			minXPosition = newPosition;
+			min_x_pos = new_pos;
 			
 			//check if the platform to deactive was also the farthest platform for the other borders
-			if ((activePlatforms[index].localPosition.y + (activePlatforms[index].localScale.y / 2)) == minYPosition)
-				minYPosition = newYMin;
-			if ((activePlatforms[index].localPosition.y - (activePlatforms[index].localScale.y / 2)) == maxYPosition)
-				maxYPosition = newYMax;
+			if ((active_platforms[index].localPosition.y + (active_platforms[index].localScale.y / 2)) == min_y_pos)
+				min_y_pos = new_y_min;
+			if ((active_platforms[index].localPosition.y - (active_platforms[index].localScale.y / 2)) == max_y_pos)
+				max_y_pos = newYMax;
 
 			//move the platform to be deactivated
-			inactivePlatforms.Enqueue(activePlatforms[index]);
-			activePlatforms.RemoveAt(index);
+			inactive_platforms.Enqueue(active_platforms[index]);
+			active_platforms.RemoveAt(index);
 
 			index = int.MaxValue;
 		}
 
 		//check if a platform should be deactivated off the right border
-		if (maxXPosition > leftExCutoff){
-			float newPosition = float.MinValue;
-			float newYMin = float.MaxValue, newYMax = float.MinValue;
+		if (max_x_pos > left_extremity_cutoff){
+			float new_pos = float.MinValue;
+			float new_y_min = float.MaxValue, newYMax = float.MinValue;
 			
-			for (int a=0; a<activePlatforms.Count; a++){
-				tempPosition = (activePlatforms[a].localPosition.x - (activePlatforms[a].localScale.x / 2));
-				if (tempPosition == maxXPosition)
+			for (int a=0; a<active_platforms.Count; a++){
+				temp_position = (active_platforms[a].localPosition.x - (active_platforms[a].localScale.x / 2));
+				if (temp_position == max_x_pos)
 					index = a;
-				else if (tempPosition > newPosition)
-					newPosition = tempPosition;
+				else if (temp_position > new_pos)
+					new_pos = temp_position;
 					
-				tempPosition = (activePlatforms[a].localPosition.y + (activePlatforms[a].localScale.y / 2));
-				if (tempPosition > minYPosition && tempPosition < newYMin)
-					newYMin = tempPosition;
-				tempPosition -= activePlatforms[a].localScale.y;
-				if (tempPosition < maxYPosition && tempPosition > newYMax)
-					newYMax = tempPosition;
+				temp_position = (active_platforms[a].localPosition.y + (active_platforms[a].localScale.y / 2));
+				if (temp_position > min_y_pos && temp_position < new_y_min)
+					new_y_min = temp_position;
+				temp_position -= active_platforms[a].localScale.y;
+				if (temp_position < max_y_pos && temp_position > newYMax)
+					newYMax = temp_position;
 			}
 			
-			maxXPosition = newPosition;
+			max_x_pos = new_pos;
 			
-			if ((activePlatforms[index].localPosition.y + (activePlatforms[index].localScale.y / 2)) == minYPosition)
-				minYPosition = newYMin;
-			if ((activePlatforms[index].localPosition.y - (activePlatforms[index].localScale.y / 2)) == maxYPosition)
-				maxYPosition = newYMax;
+			if ((active_platforms[index].localPosition.y + (active_platforms[index].localScale.y / 2)) == min_y_pos)
+				min_y_pos = new_y_min;
+			if ((active_platforms[index].localPosition.y - (active_platforms[index].localScale.y / 2)) == max_y_pos)
+				max_y_pos = newYMax;
 			
-			inactivePlatforms.Enqueue(activePlatforms[index]);
-			activePlatforms.RemoveAt(index);
+			inactive_platforms.Enqueue(active_platforms[index]);
+			active_platforms.RemoveAt(index);
 
 			index = int.MaxValue;
 		}
 
 		//check if a platform should be deactivated off the bottom border
-		if (minYPosition < upperExCutoff){
-			float newPosition = float.MaxValue;
-			float newXMin = float.MaxValue, newXMax = float.MinValue;
+		if (min_y_pos < upper_extremity_cutoff){
+			float new_pos = float.MaxValue;
+			float new_x_min = float.MaxValue, newXMax = float.MinValue;
 			
-			for (int a=0; a<activePlatforms.Count; a++){
-				tempPosition = (activePlatforms[a].localPosition.y + (activePlatforms[a].localScale.y / 2));
-				if (tempPosition == minYPosition)
+			for (int a=0; a<active_platforms.Count; a++){
+				temp_position = (active_platforms[a].localPosition.y + (active_platforms[a].localScale.y / 2));
+				if (temp_position == min_y_pos)
 					index = a;
-				else if (tempPosition < newPosition)
-					newPosition = tempPosition;
+				else if (temp_position < new_pos)
+					new_pos = temp_position;
 					
-				tempPosition = (activePlatforms[a].localPosition.x + (activePlatforms[a].localScale.x / 2));
-				if (tempPosition > minXPosition && tempPosition < newXMin)
-					newXMin = tempPosition;
-				tempPosition -= activePlatforms[a].localScale.x;
-				if (tempPosition < maxXPosition && tempPosition > newXMax)
-					newXMax = tempPosition;
+				temp_position = (active_platforms[a].localPosition.x + (active_platforms[a].localScale.x / 2));
+				if (temp_position > min_x_pos && temp_position < new_x_min)
+					new_x_min = temp_position;
+				temp_position -= active_platforms[a].localScale.x;
+				if (temp_position < max_x_pos && temp_position > newXMax)
+					newXMax = temp_position;
 			}
 			
-			minYPosition = newPosition;
+			min_y_pos = new_pos;
 			
-			if ((activePlatforms[index].localPosition.x + (activePlatforms[index].localScale.x / 2)) == minXPosition)
-				minXPosition = newXMin;
-			if ((activePlatforms[index].localPosition.x - (activePlatforms[index].localScale.x / 2)) == maxXPosition)
-				maxXPosition = newXMax;
+			if ((active_platforms[index].localPosition.x + (active_platforms[index].localScale.x / 2)) == min_x_pos)
+				min_x_pos = new_x_min;
+			if ((active_platforms[index].localPosition.x - (active_platforms[index].localScale.x / 2)) == max_x_pos)
+				max_x_pos = newXMax;
 			
-			inactivePlatforms.Enqueue(activePlatforms[index]);
-			activePlatforms.RemoveAt(index);
+			inactive_platforms.Enqueue(active_platforms[index]);
+			active_platforms.RemoveAt(index);
 
 			index = int.MaxValue;
 		}
 
 		//check if a platform should be deactivated off the top border
-		if (maxYPosition > lowerExCutoff){
-			float newPosition = float.MinValue;
-			float newXMin = float.MaxValue, newXMax = float.MinValue;
+		if (max_y_pos > lower_extremity_cutoff){
+			float new_pos = float.MinValue;
+			float new_x_min = float.MaxValue, newXMax = float.MinValue;
 			
-			for (int a=0; a<activePlatforms.Count; a++){
-				tempPosition = (activePlatforms[a].localPosition.y - (activePlatforms[a].localScale.y / 2));
-				if (tempPosition == maxYPosition)
+			for (int a=0; a<active_platforms.Count; a++){
+				temp_position = (active_platforms[a].localPosition.y - (active_platforms[a].localScale.y / 2));
+				if (temp_position == max_y_pos)
 					index = a;
-				else if (tempPosition > newPosition)
-					newPosition = tempPosition;
+				else if (temp_position > new_pos)
+					new_pos = temp_position;
 					
-				tempPosition = (activePlatforms[a].localPosition.x + (activePlatforms[a].localScale.x / 2));
-				if (tempPosition > minXPosition && tempPosition < newXMin)
-					newXMin = tempPosition;
-				tempPosition -= activePlatforms[a].localScale.x;
-				if (tempPosition < maxXPosition && tempPosition > newXMax)
-					newXMax = tempPosition;
+				temp_position = (active_platforms[a].localPosition.x + (active_platforms[a].localScale.x / 2));
+				if (temp_position > min_x_pos && temp_position < new_x_min)
+					new_x_min = temp_position;
+				temp_position -= active_platforms[a].localScale.x;
+				if (temp_position < max_x_pos && temp_position > newXMax)
+					newXMax = temp_position;
 			}
 			
-			maxYPosition = newPosition;
+			max_y_pos = new_pos;
 			
-			if ((activePlatforms[index].localPosition.x + (activePlatforms[index].localScale.x / 2)) == minXPosition)
-				minXPosition = newXMin;
-			if ((activePlatforms[index].localPosition.x - (activePlatforms[index].localScale.x / 2)) == maxXPosition)
-				maxXPosition = newXMax;
+			if ((active_platforms[index].localPosition.x + (active_platforms[index].localScale.x / 2)) == min_x_pos)
+				min_x_pos = new_x_min;
+			if ((active_platforms[index].localPosition.x - (active_platforms[index].localScale.x / 2)) == max_x_pos)
+				max_x_pos = newXMax;
 			
-			inactivePlatforms.Enqueue(activePlatforms[index]);
-			activePlatforms.RemoveAt(index);
+			inactive_platforms.Enqueue(active_platforms[index]);
+			active_platforms.RemoveAt(index);
 		}
 		
 		
 		//check if any extremity lists have reached their end
-		if (leftExIndex == allPlatforms.Count-1)
-			nextRightPos = float.MaxValue;
-		if (rightExIndex == 0)
-			nextLeftPos = float.MinValue;
-		if (upperExIndex == 0)
-			nextLowerPos = float.MinValue;
-		if (lowerExIndex == allPlatforms.Count-1)
-			nextUpperPos = float.MaxValue;
+		if (left_extremity_index == all_platforms.Count-1)
+			next_right_pos = float.MaxValue;
+		if (right_extremity_index == 0)
+			next_left_pos = float.MinValue;
+		if (upper_extremity_index == 0)
+			next_lower_pos = float.MinValue;
+		if (lower_extremity_index == all_platforms.Count-1)
+			next_upper_pos = float.MaxValue;
 
 	}
 	
 	
-	private void buildGraphEdges(){
-		float rightExPos, leftExPos, topExPos, otherTopExPos;
-		int index, otherIndex = 0, otherIndexWalk, leftExIndexLookup;
-		float xGap, yGap;
+	/*private void build_graph_edges(){
+		float right_extremity_pos, left_extremity_pos, upper_extremity_pos, other_upper_extremity_pos;
+		int index, other_index = 0, other_index_walk, left_extremity_index_lookup;
+		float x_gap, y_gap;
 		
 		//walk through platforms in order of their right extremities
-		for (int a=0; a<allPlatforms.Count; a++){
+		for (int a=0; a<all_platforms.Count; a++){
 			//get the right extremity platform info
-			index = rightExtremities[a].getIndex();
-			rightExPos = allPlatforms[index].getPosition().x + (allPlatforms[index].getScale().x / 2);
-			topExPos = allPlatforms[index].getPosition().y + (allPlatforms[index].getScale().y / 2);
+			index = right_extremities[a].Value;
+			right_extremity_pos = all_platforms[index].get_position().x + (all_platforms[index].getScale().x / 2);
+			upper_extremity_pos = all_platforms[index].get_position().y + (all_platforms[index].getScale().y / 2);
 			
 			//walk through platforms in order of their left extremities starting from the last platform selected in this way
 			//walk until the left extremity is to the right of the chosen right extremity
-			leftExIndexLookup = leftExtremities[otherIndex].getIndex();
-			leftExPos = allPlatforms[leftExIndexLookup].getPosition().x - (allPlatforms[leftExIndexLookup].getScale().x / 2);
-			while ((leftExPos < rightExPos) && otherIndex < (allPlatforms.Count-1)){
+			left_extremity_index_lookup = left_extremities[other_index].Value;
+			left_extremity_pos = all_platforms[left_extremity_index_lookup].get_position().x - (all_platforms[left_extremity_index_lookup].getScale().x / 2);
+			while ((left_extremity_pos < right_extremity_pos) && other_index < (all_platforms.Count-1)){
 				//get the left extremity platform info
-				otherIndex++;
-				leftExIndexLookup = leftExtremities[otherIndex].getIndex();
-				leftExPos = allPlatforms[leftExIndexLookup].getPosition().x - (allPlatforms[leftExIndexLookup].getScale().x / 2);
+				other_index++;
+				left_extremity_index_lookup = left_extremities[other_index].Value;
+				left_extremity_pos = all_platforms[left_extremity_index_lookup].get_position().x - (all_platforms[left_extremity_index_lookup].getScale().x / 2);
 			}
 			
 			//walk forward from the chosen left extremity until the gap on the x axe between the current left extremity platorm and the right extremity platform becomes too great
-			otherIndexWalk = otherIndex;
+			other_index_walk = other_index;
 			do{
 				//get the left extremity platform info
-				leftExIndexLookup = leftExtremities[otherIndexWalk].getIndex();
-				leftExPos = allPlatforms[otherIndexWalk].getPosition().x - (allPlatforms[otherIndexWalk].getScale().x / 2);
-				otherTopExPos = allPlatforms[otherIndexWalk].getPosition().y + (allPlatforms[otherIndexWalk].getScale().y / 2);
-				xGap = leftExPos - rightExPos;
+				left_extremity_index_lookup = left_extremities[other_index_walk].Value;
+				left_extremity_pos = all_platforms[other_index_walk].get_position().x - (all_platforms[other_index_walk].getScale().x / 2);
+				other_upper_extremity_pos = all_platforms[other_index_walk].get_position().y + (all_platforms[other_index_walk].getScale().y / 2);
+				x_gap = left_extremity_pos - right_extremity_pos;
 				
 				//if the left extremity platform is above the right extremity platform
-				if (otherTopExPos > topExPos){
-					yGap = otherTopExPos - topExPos;
+				if (other_upper_extremity_pos > upper_extremity_pos){
+					y_gap = other_upper_extremity_pos - upper_extremity_pos;
 					//check if the left extremity platform can be reached from the right extremity platform
-					if (yGap < platformUpwardsGap)
+					if (y_gap < platform_upwards_gap)
 						//add an edge to the graph to indicate that the platform can be reached
-						platformGraph.addEdge(index, new Edge(xGap, yGap, leftExIndexLookup));
+						platform_graph.addEdge(index, new Edge(x_gap, y_gap, left_extremity_index_lookup));
 					//check if the right extremity platform can be reached from the left extremity platform
-					if (yGap < platformDownwardsGap)
+					if (y_gap < platform_downwards_gap)
 						//add an edge to the graph to indicate that the platform can be reached
-						platformGraph.addEdge(leftExIndexLookup, new Edge(xGap, yGap, index));
+						platform_graph.addEdge(left_extremity_index_lookup, new Edge(x_gap, y_gap, index));
 				}
 				//if the left extremity platform is below the right extremity platform
 				else{
-					yGap = topExPos - otherTopExPos;
+					y_gap = upper_extremity_pos - other_upper_extremity_pos;
 					//check if the left extremity platform can be reached from the right extremity platform
-					if (yGap < platformDownwardsGap)
+					if (y_gap < platform_downwards_gap)
 						//add an edge to the graph to indicate that the platform can be reached
-						platformGraph.addEdge(index, new Edge(xGap, yGap, leftExIndexLookup));
+						platform_graph.addEdge(index, new Edge(x_gap, y_gap, left_extremity_index_lookup));
 					//check if the right extremity platform can be reached from the left extremity platform
-					if (yGap < platformUpwardsGap)
+					if (y_gap < platform_upwards_gap)
 						//add an edge to the graph to indicate that the platform can be reached
-						platformGraph.addEdge(leftExIndexLookup, new Edge(xGap, yGap, index));
+						platform_graph.addEdge(left_extremity_index_lookup, new Edge(x_gap, y_gap, index));
 				}
 				
-				otherIndexWalk++;
-			} while (((leftExPos - rightExPos) < platformWidthGap) && otherIndexWalk < allPlatforms.Count);
+				other_index_walk++;
+			} while (((left_extremity_pos - right_extremity_pos) < platform_horizontal_gap) && other_index_walk < all_platforms.Count);
 		}
-	}
+	}*/
 	
 
 }

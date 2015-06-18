@@ -3,15 +3,15 @@ using System.Collections.Generic;
 
 public class Smith : Shop {
 
-	protected List<Item> craftableItems;
-	protected List<Item> salvageableItems;
+	protected List<Item> craftable_items;
+	protected List<Item> salvageable_items;
 
 
-	public List<Item> getCraftableItems(){
-		return craftableItems;
+	public List<Item> get_craftable_items(){
+		return craftable_items;
 	}
 
-	public List<Item> getSalvageableItems(){
-		return salvageableItems;
+	public List<Item> get_salvageable_items(){
+		return salvageable_items;
 	}
 }

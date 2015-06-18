@@ -26,7 +26,7 @@ public class PlayerController : MonoBehaviour
 	{
 		if (Input.GetKey (KeyCode.LeftArrow))
 		{
-			this.rigidbody2D.AddForce(Vector2.right * -300 * Time.deltaTime);
+			this.GetComponent<Rigidbody2D>().AddForce(Vector2.right * -500 * Time.deltaTime);
 			SR.sprite = Idle;
 			Direction = new Vector3(-1,1,1);
 			transform.localScale = Direction;
@@ -34,7 +34,7 @@ public class PlayerController : MonoBehaviour
 
 		if (Input.GetKey (KeyCode.RightArrow))
 		{
-			this.rigidbody2D.AddRelativeForce(Vector2.right * 300 * Time.deltaTime);
+			this.GetComponent<Rigidbody2D>().AddRelativeForce(Vector2.right * 500 * Time.deltaTime);
 			SR.sprite = Idle;
 			Direction = new Vector3(1,1,1);
 			transform.localScale = Direction;
@@ -42,7 +42,7 @@ public class PlayerController : MonoBehaviour
 
 		if (Input.GetKeyDown (KeyCode.Space) && isGrounded) 
 		{
-			this.rigidbody2D.AddRelativeForce(Vector2.up * 5000 * Time.deltaTime);
+			this.GetComponent<Rigidbody2D>().AddRelativeForce(Vector2.up * 20000 * Time.deltaTime);
 			isGrounded = false;
 			SR.sprite = Punch1;
 		}

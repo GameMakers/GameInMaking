@@ -3,72 +3,72 @@ using System.Collections.Generic;
 
 public class Character : MonoBehaviour {
 
-	protected string characterName;
+	protected string character_name;
 
 	protected int level;
-	protected int totalHealth;
-	protected int currentHealth;
+	protected int total_health;
+	protected int current_health;
 	protected int power;
 	protected int accuracy;
 	protected int defense;
 	protected int agility;
 
-	protected Dictionary<StatusCondition, int> conditionResistances;
+	protected Dictionary<Status_condition, int> condition_resistances;
 
 	//conditions currently being suffered (bleeding, poision, etc)
-	protected List<StatusCondition> statusConditions;
+	protected List<Status_condition> status_conditions;
 	
 	
 	
 	
-	public string toString(){
-		return characterName;
+	public string to_string(){
+		return character_name;
 	}
 
-	public int getLevel(){
+	public int get_level(){
 		return level;
 	}
 
-	public int getTotalHealth(){
-		return totalHealth;
+	public int get_total_health(){
+		return total_health;
 	}
 
-	public int getCurrentHealth(){
-		return currentHealth;
+	public int get_current_health(){
+		return current_health;
 	}
 
-	public int getPower(){
+	public int get_power(){
 		return power;
 	}
 
-	public int getAccuracy(){
+	public int get_accuracy(){
 		return accuracy;
 	}
 
-	public int getDefense(){
+	public int get_defense(){
 		return defense;
 	}
 
-	public int getAgility(){
+	public int get_agility(){
 		return agility;
 	}
 
-	public Dictionary<StatusCondition, int> getConditionResistances(){
-		return conditionResistances;
+	public Dictionary<Status_condition, int> get_condition_resistances(){
+		return condition_resistances;
 	}
 
 
 
 
-	public void takeDamage(int baseDmg){
+	public void take_damage(int base_damage){
 		//PREFORM DAMAGE CALCULATION
 	}
 
-	public void applyConditionDamages(){
+	public void apply_condition_damages(){
 		//CALCULATE DAMAGE TAKEN FROM CONDITIONS BASED ON RESISTANCES
 	}
 
-	public void levelUp(){
+	public void level_up(){
 		level++;
 	}
 
